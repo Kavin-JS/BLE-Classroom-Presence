@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>BLE Classroom Presence Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1420;
+    --panel: #171d2b;
+    --border: #2a3348;
+    --text: #e6e9f0;
+    --muted: #8b93a7;
+    --green: #33cc66;
+    --red: #e34a4a;
+    --yellow: #e3c23f;
+    --blue: #4a8ce3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px 0; }
+  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .panel h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 0 0 12px 0;
+  }
+  .dot {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  .dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot.off { background: var(--red); box-shadow: 0 0 6px var(--red); }
+  .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .row:last-child { border-bottom: none; }
+  .muted { color: var(--muted); font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 11px; letter-spacing: 0.05em; }
+  .badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .badge.present { background: rgba(51,204,102,0.15); color: var(--green); }
+  .badge.absent { background: rgba(227,74,74,0.15); color: var(--red); }
+  .device-card { margin-bottom: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+  .device-card .name { font-weight: 600; }
+  .rssi { color: var(--blue); }
+</style>
+</head>
+<body>
+
+<h1>Multi-Node BLE Classroom Presence Dashboard</h1>
+<div class="subtitle">Server time: <span id="server-time">—</span></div>
+
+<div class="grid">
+  <div class="panel">
+    <h2>Node 1</h2>
+    <div class="row"><span><span class="dot off" id="n1-dot"></span>Status</span><span id="n1-status">offline</span></div>
+    <div class="row"><span>Last heartbeat</span><span id="n1-hb">—</span></div>
+  </div>
+
+  <div class="panel">
+    <h2>Node 2</h2>
+    <div class="row"><span><span class="dot off" id="n2-dot"></span>Status</span><span id="n2-status">offline</span></div>
+    <div class="row"><span>Last heartbeat</span><span id="n2-hb">—</span></div>
+  </div>
+
+  <div class="panel">
+    <h2>Verification Rules (active config)</h2>
+    <div class="row"><span>Window (sec)</span><span id="cfg-window">—</span></div>
+    <div class="row"><span>Min detections/node</span><span id="cfg-min">—</span></div>
+    <div class="row"><span>Require both nodes</span><span id="cfg-both">—</span></div>
+    <div class="row"><span>RSSI filter</span><span id="cfg-rssi">—</span></div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="panel" style="grid-column: span 2;">
+    <h2>Registered Devices — Live Detection</h2>
+    <div id="devices"></div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Attendance History (data/attendance.csv)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Student ID</th><th>Date</th><th>Time</th><th>Status</th>
+        <th>Node 1</th><th>Node 2</th><th>RSSI 1</th><th>RSSI 2</th>
+      </tr>
+    </thead>
+    <tbody id="attendance-body">
+      <tr><td colspan="8" class="muted">No attendance recorded yet.</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+function setDot(el, on) {
+  el.classList.remove("on", "off");
+  el.classList.add(on ? "on" : "off");
+}
+
+async function refreshStatus() {
+  try {
+    const res = await fetch("/api/status");
+    const data = await res.json();
+
+    document.getElementById("server-time").textContent = data.server_time;
+
+    setDot(document.getElementById("n1-dot"), data.nodes.NODE_1.online);
+    document.getElementById("n1-status").textContent = data.nodes.NODE_1.online ? "online" : "offline";
+    document.getElementById("n1-hb").textContent = data.nodes.NODE_1.last_heartbeat || "—";
+
+    setDot(document.getElementById("n2-dot"), data.nodes.NODE_2.online);
+    document.getElementById("n2-status").textContent = data.nodes.NODE_2.online ? "online" : "offline";
+    document.getElementById("n2-hb").textContent = data.nodes.NODE_2.last_heartbeat || "—";
+
+    document.getElementById("cfg-window").textContent = data.config.presence_window_seconds;
+    document.getElementById("cfg-min").textContent = data.config.min_detections_per_node;
+    document.getElementById("cfg-both").textContent = data.config.require_both_nodes ? "Yes" : "No";
+    document.getElementById("cfg-rssi").textContent = data.config.rssi_filter_enabled ? "Enabled" : "Disabled (default)";
+
+    const devicesDiv = document.getElementById("devices");
+    devicesDiv.innerHTML = "";
+    for (const [deviceId, d] of Object.entries(data.devices)) {
+      const card = document.createElement("div");
+      card.className = "device-card";
+      card.innerHTML = `
+        <div class="row">
+          <span class="name">${deviceId} <span class="muted">(${d.student_id})</span></span>
+          <span class="badge ${d.present ? 'present' : 'absent'}">${d.present ? 'PRESENT' : 'NOT VERIFIED'}</span>
+        </div>
+        <div class="row"><span>Node 1</span>
+          <span>${d.node_1_count_in_window} in window · <span class="rssi">${d.node_1_rssi ?? '—'} dBm</span> · last seen ${d.node_1_last_seen ?? '—'}</span>
+        </div>
+        <div class="row"><span>Node 2</span>
+          <span>${d.node_2_count_in_window} in window · <span class="rssi">${d.node_2_rssi ?? '—'} dBm</span> · last seen ${d.node_2_last_seen ?? '—'}</span>
+        </div>
+      `;
+      devicesDiv.appendChild(card);
+    }
+  } catch (e) {
+    console.error("status refresh failed", e);
+  }
+}
+
+async function refreshAttendance() {
+  try {
+    const res = await fetch("/api/attendance");
+    const rows = await res.json();
+    const body = document.getElementById("attendance-body");
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="8" class="muted">No attendance recorded yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map(r => `
+      <tr>
+        <td>${r.Student_ID}</td><td>${r.Date}</td><td>${r.Time}</td>
+        <td><span class="badge present">${r.Status}</span></td>
+        <td>${r.Node_1_Detected}</td><td>${r.Node_2_Detected}</td>
+        <td>${r.RSSI_1}</td><td>${r.RSSI_2}</td>
+      </tr>
+    `).join("");
+  } catch (e) {
+    console.error("attendance refresh failed", e);
+  }
+}
+
+refreshStatus();
+refreshAttendance();
+setInterval(refreshStatus, 2000);
+setInterval(refreshAttendance, 4000);
+</script>
+
+</body>
+</html>

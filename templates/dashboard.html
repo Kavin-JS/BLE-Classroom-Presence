@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BLE Classroom Presence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#eaf1f4;
+    --paper-line: rgba(27,36,48,0.06);
+    --panel:#ffffff;
+    --border:#c7d4da;
+    --ink:#1b2430;
+    --ink-dim:#5b6a78;
+    --copper:#b45f0c;
+    --copper-soft: rgba(180,95,12,0.12);
+    --good:#1f7a4d;
+    --good-soft: rgba(31,122,77,0.12);
+    --bad:#b3261e;
+    --bad-soft: rgba(179,38,30,0.10);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      linear-gradient(var(--paper-line) 1px, transparent 1px) 0 0/100% 28px,
+      linear-gradient(90deg, var(--paper-line) 1px, transparent 1px) 0 0/28px 100%,
+      var(--paper);
+    color:var(--ink);
+    font-family:"Space Grotesk", system-ui, sans-serif;
+  }
+  .mono{ font-family:"IBM Plex Mono", ui-monospace, monospace; }
+
+  header{
+    padding:26px 36px 20px;
+    border-bottom:1px solid var(--border);
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    flex-wrap:wrap;
+    gap:10px;
+  }
+  header h1{ margin:0; font-size:24px; font-weight:600; letter-spacing:-0.01em; }
+  header .subtitle{ margin-top:6px; color:var(--ink-dim); font-size:14px; max-width:46ch; }
+  .poll{
+    display:flex; align-items:center; gap:8px;
+    font-family:"IBM Plex Mono", monospace; font-size:12px; color:var(--ink-dim);
+  }
+  .poll .pulse{
+    width:7px; height:7px; border-radius:50%; background:var(--copper);
+    animation:pulse 3s infinite ease-in-out;
+  }
+  @keyframes pulse{
+    0%,100%{ opacity:1; box-shadow:0 0 0 0 var(--copper-soft); }
+    50%{ opacity:.55; box-shadow:0 0 0 5px transparent; }
+  }
+  @media (prefers-reduced-motion: reduce){ .poll .pulse{ animation:none; } }
+
+  main{ max-width:1180px; margin:0 auto; padding:30px 36px 48px; }
+
+  section{ margin-bottom:28px; }
+  section > .section-label{
+    font-size:12px; color:var(--ink-dim); margin-bottom:10px;
+    padding-bottom:6px; border-bottom:1px solid var(--border);
+  }
+
+  .nodes{ display:grid; grid-template-columns:repeat(auto-fit, minmax(300px,1fr)); gap:18px; }
+  .node{
+    background:var(--panel); border:1px solid var(--border); border-radius:6px;
+    padding:20px 22px;
+  }
+  .node-top{ display:flex; justify-content:space-between; align-items:baseline; }
+  .node-top h2{ margin:0; font-size:16px; font-weight:600; }
+  .node-role{ color:var(--ink-dim); font-size:12px; margin-top:2px; }
+
+  .led{ display:flex; align-items:center; gap:7px; font-size:13px; }
+  .led .sq{ width:9px; height:9px; border-radius:2px; }
+  .led.online{ color:var(--good); }
+  .led.online .sq{ background:var(--good); box-shadow:0 0 5px var(--good-soft); }
+  .led.offline{ color:var(--bad); }
+  .led.offline .sq{ background:var(--bad); }
+
+  .node-grid{
+    display:grid; grid-template-columns:1fr 1fr; gap:16px 20px;
+    margin-top:16px; padding-top:16px; border-top:1px solid var(--paper-line);
+  }
+  .field label{ display:block; font-size:11px; color:var(--ink-dim); margin-bottom:4px; }
+  .field .val{ font-size:15px; font-weight:500; }
+
+  .bars{ display:flex; align-items:flex-end; gap:3px; height:16px; margin-right:8px; }
+  .bars i{ width:4px; background:var(--border); border-radius:1px; display:block; }
+  .bars i:nth-child(1){ height:30%; } .bars i:nth-child(2){ height:50%; }
+  .bars i:nth-child(3){ height:68%; } .bars i:nth-child(4){ height:84%; } .bars i:nth-child(5){ height:100%; }
+  .bars.lit-1 i:nth-child(1),.bars.lit-2 i:nth-child(-n+2),.bars.lit-3 i:nth-child(-n+3),
+  .bars.lit-4 i:nth-child(-n+4),.bars.lit-5 i:nth-child(-n+5){ background:var(--copper); }
+  .signal-row{ display:flex; align-items:center; }
+
+  .spec{
+    background:var(--panel); border:1px solid var(--border); border-radius:6px;
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(160px,1fr));
+  }
+  .spec div{ padding:16px 20px; border-left:1px solid var(--paper-line); }
+  .spec div:first-child{ border-left:none; }
+  .spec label{ display:block; font-size:11px; color:var(--ink-dim); margin-bottom:5px; }
+  .spec .val{ font-size:15px; font-weight:500; }
+
+  table{ width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+  thead th{
+    text-align:left; font-size:11px; font-weight:500; color:var(--ink-dim);
+    padding:12px 16px; border-bottom:1px solid var(--border); background:#f5f8f9;
+  }
+  tbody td{ padding:12px 16px; font-size:13.5px; border-bottom:1px solid var(--paper-line); }
+  tbody tr:last-child td{ border-bottom:none; }
+  .num{ text-align:right; }
+  .verified{ color:var(--good); font-weight:500; }
+  .not-verified{ color:var(--ink-dim); }
+  .empty-row td{ padding:22px 16px; color:var(--ink-dim); font-size:13px; text-align:center; }
+
+  footer{ padding:18px 36px 30px; color:var(--ink-dim); font-size:12px; text-align:center; }
+
+  @media (max-width:640px){
+    header, main{ padding-left:20px; padding-right:20px; }
+    table{ display:block; overflow-x:auto; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>BLE Classroom Presence</h1>
+    <div class="subtitle">Two-node ESP32 detection, verified when both nodes log a device above the RSSI threshold.</div>
+  </div>
+  <div class="poll"><span class="pulse"></span>polling every 3s</div>
+</header>
+
+<main>
+
+  <section>
+    <div class="section-label">Node status</div>
+    <div class="nodes">
+
+      <div class="node">
+        <div class="node-top">
+          <div>
+            <h2>Node 1</h2>
+            <div class="node-role">ESP32 receiver</div>
+          </div>
+          <div id="node1Status" class="led offline"><span class="sq"></span>Offline</div>
+        </div>
+        <div class="node-grid">
+          <div class="field"><label>IP address</label><div id="node1IP" class="val mono">&mdash;</div></div>
+          <div class="field"><label>Last heartbeat</label><div id="node1Heartbeat" class="val mono">&mdash;</div></div>
+          <div class="field" style="grid-column:1/-1;">
+            <label>Wi-Fi signal</label>
+            <div class="signal-row">
+              <div id="node1Bars" class="bars"><i></i><i></i><i></i><i></i><i></i></div>
+              <span id="node1RSSI" class="val mono">&mdash;</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="node">
+        <div class="node-top">
+          <div>
+            <h2>Node 2</h2>
+            <div class="node-role">ESP32 receiver</div>
+          </div>
+          <div id="node2Status" class="led offline"><span class="sq"></span>Offline</div>
+        </div>
+        <div class="node-grid">
+          <div class="field"><label>IP address</label><div id="node2IP" class="val mono">&mdash;</div></div>
+          <div class="field"><label>Last heartbeat</label><div id="node2Heartbeat" class="val mono">&mdash;</div></div>
+          <div class="field" style="grid-column:1/-1;">
+            <label>Wi-Fi signal</label>
+            <div class="signal-row">
+              <div id="node2Bars" class="bars"><i></i><i></i><i></i><i></i><i></i></div>
+              <span id="node2RSSI" class="val mono">&mdash;</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="section-label">Verification rules</div>
+    <div class="spec">
+      <div><label>Presence window</label><div class="val">30 seconds</div></div>
+      <div><label>Minimum detections</label><div class="val">3 per node</div></div>
+      <div><label>Verification requires</label><div class="val">Both nodes</div></div>
+      <div><label>Detection method</label><div class="val">BLE + RSSI</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-label">Live presence</div>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Device</th>
+            <th>Student</th>
+            <th>Roll no.</th>
+            <th class="num">Node 1</th>
+            <th class="num">Node 2</th>
+            <th>Verification</th>
+          </tr>
+        </thead>
+        <tbody id="attendanceTable">
+          <tr class="empty-row"><td colspan="6">No devices detected yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<footer>BLE Classroom Presence Verification System</footer>
+
+<script>
+function rssiToBars(rssi){
+  if(rssi === null || rssi === undefined) return 0;
+  if(rssi >= -55) return 5;
+  if(rssi >= -65) return 4;
+  if(rssi >= -75) return 3;
+  if(rssi >= -85) return 2;
+  return 1;
+}
+
+async function updateStatus(){
+  try{
+    const response = await fetch("/api/status");
+    const data = await response.json();
+    updateNode(data.NODE_1, "node1");
+    updateNode(data.NODE_2, "node2");
+  }catch(error){
+    console.error("Status error:", error);
+  }
+}
+
+function updateNode(data, prefix){
+  if(!data) return;
+  const status = document.getElementById(prefix + "Status");
+  const ip = document.getElementById(prefix + "IP");
+  const rssi = document.getElementById(prefix + "RSSI");
+  const bars = document.getElementById(prefix + "Bars");
+  const heartbeat = document.getElementById(prefix + "Heartbeat");
+
+  if(data.online){
+    status.className = "led online";
+    status.innerHTML = '<span class="sq"></span>Online';
+  }else{
+    status.className = "led offline";
+    status.innerHTML = '<span class="sq"></span>Offline';
+  }
+
+  ip.textContent = data.ip || "\u2014";
+  rssi.textContent = data.wifi_rssi !== null && data.wifi_rssi !== undefined ? data.wifi_rssi + " dBm" : "\u2014";
+  bars.className = "bars lit-" + rssiToBars(data.wifi_rssi);
+  heartbeat.textContent = data.last_heartbeat || "\u2014";
+}
+
+async function updateAttendance(){
+  try{
+    const response = await fetch("/api/attendance");
+    const data = await response.json();
+    const table = document.getElementById("attendanceTable");
+
+    if(!data || data.length === 0){
+      table.innerHTML = '<tr class="empty-row"><td colspan="6">No devices detected yet.</td></tr>';
+      return;
+    }
+
+    table.innerHTML = "";
+    for(const student of data){
+      const row = document.createElement("tr");
+      const verification = student.verified
+        ? '<span class="verified">Verified</span>'
+        : '<span class="not-verified">Not verified</span>';
+
+      row.innerHTML = `
+        <td class="mono">${student.device_name}</td>
+        <td>${student.name}</td>
+        <td class="mono">${student.roll_no}</td>
+        <td class="num mono">${student.node_1_detections}</td>
+        <td class="num mono">${student.node_2_detections}</td>
+        <td>${verification}</td>
+      `;
+      table.appendChild(row);
+    }
+  }catch(error){
+    console.error("Attendance error:", error);
+  }
+}
+
+async function updateAll(){
+  await updateStatus();
+  await updateAttendance();
+}
+
+updateAll();
+setInterval(updateAll, 3000);
+</script>
+
+</body>
+</html>
