@@ -335,7 +335,7 @@ void sendHeartbeat() {
 
   String json;
 
-  json.reserve(128);
+  json.reserve(192);
 
   json += "{";
   json += "\"node_id\":\"";
@@ -348,6 +348,15 @@ void sendHeartbeat() {
 
   json += "\"wifi_rssi\":";
   json += String(WiFi.RSSI());
+  json += ",";
+
+  // Node telemetry shown on the dashboard.
+  json += "\"uptime_sec\":";
+  json += String((unsigned long)(millis() / 1000UL));
+  json += ",";
+
+  json += "\"free_heap\":";
+  json += String((unsigned long)ESP.getFreeHeap());
 
   json += "}";
 
