@@ -88,7 +88,7 @@ CHECK_INTERVAL_SEC = 10
 MIN_PRESENCE_PERCENT = 75
 
 # Leaving for this long in a row (after arriving) marks the student ABSENT.
-MAX_CONTINUOUS_ABSENCE_SEC = 30
+MAX_CONTINUOUS_ABSENCE_SEC = 300
 
 # Optional: end the class automatically after this many minutes.
 # None = the class only ends when you press "End class" on the dashboard.

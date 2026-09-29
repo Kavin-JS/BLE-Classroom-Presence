@@ -23,8 +23,7 @@ const uint16_t SERVER_PORT = 5000;
 
 // Known 2.4 GHz Amrita_CHN2 AP
 // Channel: 13
-// BSSID: E4:D1:24:2E:24:01
-
+// BSSID:  E4:D1:24:2E:24:01
 const uint8_t WIFI_BSSID[] = {
   0xE4,
   0xD1,
@@ -40,8 +39,7 @@ const uint8_t WIFI_CHANNEL = 13;
 // BLE CONFIGURATION
 // ============================================================
 
-// 3-second scan
-const uint16_t BLE_SCAN_TIME = 3;
+const uint16_t BLE_SCAN_TIME = 4;
 
 // Registered BLE advertising names
 const char* DEVICE_1 = "ATTEND-KAVIN";
@@ -58,9 +56,8 @@ const unsigned long WIFI_RETRY_INTERVAL = 5000;
 // HTTP
 // ============================================================
 
-// Shorter timeouts for local-network communication
-const uint16_t HTTP_CONNECT_TIMEOUT = 2000;
-const uint16_t HTTP_RESPONSE_TIMEOUT = 3000;
+const uint16_t HTTP_CONNECT_TIMEOUT = 4000;
+const uint16_t HTTP_RESPONSE_TIMEOUT = 6000;
 
 // ============================================================
 // LED PINS
@@ -140,6 +137,7 @@ bool connectWiFi() {
     WiFi.status() != WL_CONNECTED &&
     millis() - startTime < 20000
   ) {
+
     delay(250);
     Serial.print(".");
   }
@@ -173,13 +171,15 @@ bool connectWiFi() {
     Serial.println(WiFi.BSSIDstr());
 
     setWiFiLED(true);
-    setErrorLED(false);
 
     return true;
   }
 
   Serial.println();
-  Serial.printf("[%s] Wi-Fi connection FAILED\n", NODE_ID);
+  Serial.printf(
+    "[%s] Wi-Fi connection FAILED\n",
+    NODE_ID
+  );
 
   Serial.print("Wi-Fi status: ");
   Serial.println(WiFi.status());
@@ -221,6 +221,7 @@ bool ensureWiFi() {
 String getServerURL(const char* endpoint) {
 
   String url;
+
   url.reserve(64);
 
   url += "http://";
@@ -233,7 +234,7 @@ String getServerURL(const char* endpoint) {
 }
 
 // ============================================================
-// HTTP POST WITH ONE RETRY
+// HTTP POST
 // ============================================================
 
 int sendPOST(
@@ -247,104 +248,79 @@ int sendPOST(
 
   String url = getServerURL(endpoint);
 
-  // Maximum two attempts
-  for (int attempt = 1; attempt <= 2; attempt++) {
+  Serial.print("[");
+  Serial.print(NODE_ID);
+  Serial.print("] POST ");
+  Serial.println(url);
+
+  WiFiClient client;
+
+  HTTPClient http;
+
+  http.setConnectTimeout(
+    HTTP_CONNECT_TIMEOUT
+  );
+
+  http.setTimeout(
+    HTTP_RESPONSE_TIMEOUT
+  );
+
+  // Use HTTP/1.0 to avoid persistent connections
+  // accumulating on a small embedded client.
+  http.useHTTP10(true);
+
+  if (!http.begin(client, url)) {
+
+    Serial.printf(
+      "[%s] HTTP begin failed\n",
+      NODE_ID
+    );
+
+    setErrorLED(true);
+
+    return -1;
+  }
+
+  http.addHeader(
+    "Content-Type",
+    "application/json"
+  );
+
+  int httpCode = http.POST(json);
+
+  if (httpCode > 0) {
 
     Serial.print("[");
     Serial.print(NODE_ID);
-    Serial.print("] POST attempt ");
-    Serial.print(attempt);
-    Serial.print(": ");
-    Serial.println(url);
+    Serial.print("] HTTP response: ");
+    Serial.println(httpCode);
 
-    WiFiClient client;
-    HTTPClient http;
+    if (
+      httpCode >= 200 &&
+      httpCode < 300
+    ) {
 
-    http.setConnectTimeout(HTTP_CONNECT_TIMEOUT);
-    http.setTimeout(HTTP_RESPONSE_TIMEOUT);
-
-    // Avoid persistent HTTP connections
-    http.useHTTP10(true);
-
-    if (!http.begin(client, url)) {
-
-      Serial.printf(
-        "[%s] HTTP begin failed\n",
-        NODE_ID
-      );
-
-      http.end();
-
-      if (attempt == 1) {
-        delay(150);
-        continue;
-      }
-
-      setErrorLED(true);
-      return -1;
-    }
-
-    http.addHeader(
-      "Content-Type",
-      "application/json"
-    );
-
-    int httpCode = http.POST(json);
-
-    if (httpCode > 0) {
-
-      Serial.print("[");
-      Serial.print(NODE_ID);
-      Serial.print("] HTTP response: ");
-      Serial.println(httpCode);
-
-      if (
-        httpCode >= 200 &&
-        httpCode < 300
-      ) {
-
-        setOKLED(true);
-        setErrorLED(false);
-
-        http.end();
-        return httpCode;
-      }
-
-      // Server returned an HTTP error.
-      // Don't retry normal 4xx errors.
-      if (
-        httpCode >= 400 &&
-        httpCode < 500
-      ) {
-        setErrorLED(true);
-        http.end();
-        return httpCode;
-      }
+      setOKLED(true);
+      setErrorLED(false);
 
     } else {
 
-      Serial.print("[");
-      Serial.print(NODE_ID);
-      Serial.print("] HTTP POST failed, code=");
-      Serial.println(httpCode);
+      setErrorLED(true);
     }
 
-    http.end();
+  } else {
 
-    // Retry only once
-    if (attempt == 1) {
-      delay(150);
+    Serial.print("[");
+    Serial.print(NODE_ID);
+    Serial.print("] HTTP POST failed, code=");
+    Serial.println(httpCode);
 
-      // Check Wi-Fi before retrying
-      if (WiFi.status() != WL_CONNECTED) {
-        ensureWiFi();
-      }
-    }
+    setErrorLED(true);
   }
 
-  setErrorLED(true);
+  http.end();
 
-  return -1;
+  return httpCode;
 }
 
 // ============================================================
@@ -358,10 +334,10 @@ void sendHeartbeat() {
   }
 
   String json;
+
   json.reserve(192);
 
   json += "{";
-
   json += "\"node_id\":\"";
   json += NODE_ID;
   json += "\",";
@@ -374,6 +350,7 @@ void sendHeartbeat() {
   json += String(WiFi.RSSI());
   json += ",";
 
+  // Node telemetry shown on the dashboard.
   json += "\"uptime_sec\":";
   json += String((unsigned long)(millis() / 1000UL));
   json += ",";
@@ -414,6 +391,7 @@ void sendDetection(
 ) {
 
   String json;
+
   json.reserve(180);
 
   json += "{";
@@ -452,7 +430,6 @@ void performBLEScan() {
   }
 
   Serial.println();
-
   Serial.printf(
     "[%s] Starting BLE scan...\n",
     NODE_ID
@@ -474,6 +451,7 @@ void performBLEScan() {
     );
 
     setBLELED(false);
+
     return;
   }
 
@@ -498,13 +476,14 @@ void performBLEScan() {
     String name = "";
 
     if (device.haveName()) {
-      name = device.getName().c_str();
+      name =
+        device.getName().c_str();
     }
 
     String mac =
       device.getAddress()
-        .toString()
-        .c_str();
+           .toString()
+           .c_str();
 
     int rssi =
       device.getRSSI();
@@ -526,14 +505,16 @@ void performBLEScan() {
     Serial.print(rssi);
     Serial.println(" dBm");
 
-    // Registered device
+    // --------------------------------------------------------
+    // REGISTERED DEVICE
+    // --------------------------------------------------------
+
     if (
       name.length() > 0 &&
       isRegisteredDevice(name)
     ) {
 
       Serial.println();
-
       Serial.printf(
         "[%s] REGISTERED DEVICE DETECTED\n",
         NODE_ID
@@ -576,10 +557,25 @@ void setup() {
   // LED SETUP
   // ----------------------------------------------------------
 
-  pinMode(LED_WIFI, OUTPUT);
-  pinMode(LED_BLE, OUTPUT);
-  pinMode(LED_OK, OUTPUT);
-  pinMode(LED_ERR, OUTPUT);
+  pinMode(
+    LED_WIFI,
+    OUTPUT
+  );
+
+  pinMode(
+    LED_BLE,
+    OUTPUT
+  );
+
+  pinMode(
+    LED_OK,
+    OUTPUT
+  );
+
+  pinMode(
+    LED_ERR,
+    OUTPUT
+  );
 
   setWiFiLED(false);
   setBLELED(false);
@@ -592,16 +588,13 @@ void setup() {
 
   Serial.println();
   Serial.println("========================================");
-
   Serial.printf(
     "        %s\n",
     NODE_ID
   );
-
   Serial.println(
     "Multi-Node BLE Classroom Presence"
   );
-
   Serial.println("========================================");
 
   // ----------------------------------------------------------
@@ -670,22 +663,6 @@ void loop() {
 
   performBLEScan();
 
-  // ----------------------------------------------------------
-  // HEARTBEAT CHECK AFTER BLE SCAN
-  // ----------------------------------------------------------
-  // BLE scanning is blocking, so check again immediately
-  // after the scan finishes.
-
-  if (
-    millis() - lastHeartbeat >=
-    HEARTBEAT_INTERVAL
-  ) {
-
-    lastHeartbeat = millis();
-
-    sendHeartbeat();
-  }
-
-  // Small delay
+  // Small delay prevents a tight loop
   delay(500);
 }
